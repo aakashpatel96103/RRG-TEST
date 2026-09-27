@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: employee-config
+  namespace: employee-system
+data:
+  API_URL: "http://employee-backend:8000"

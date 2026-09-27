@@ -1,0 +1,69 @@
+name: Employee Management CI-CD
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with: {python-version: "3.12"}
+    - run: pip install -r backend/requirements.txt
+    - run: cd backend && pytest -q
+    - uses: actions/setup-node@v4
+      with: {node-version: "20"}
+    - run: cd frontend && npm install && npm run build
+
+  security:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+    - uses: actions/checkout@v4
+    - uses: aquasecurity/trivy-action@0.28.0
+      with:
+        scan-type: fs
+        scan-ref: .
+        severity: CRITICAL,HIGH
+        ignore-unfixed: true
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - uses: docker/build-push-action@v6
+      with:
+        context: ./backend
+        push: true
+        tags: ghcr.io/${{ github.repository_owner }}/employee-management-backend:${{ github.sha }}
+    - uses: docker/build-push-action@v6
+      with:
+        context: ./frontend
+        push: true
+        tags: ghcr.io/${{ github.repository_owner }}/employee-management-frontend:${{ github.sha }}
+
+  artifact:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+    - uses: actions/checkout@v4
+    - run: zip -r employee-management-${{ github.sha }}.zip backend frontend k8s docker-compose.yml README.md
+    - uses: actions/upload-artifact@v4
+      with:
+        name: employee-management-${{ github.sha }}
+        path: employee-management-${{ github.sha }}.zip
